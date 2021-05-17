@@ -33,7 +33,6 @@ CAPTCHA_SVG="captcha.svg"
 # CAPTCHA_PNG="captcha.png"
 
 token=""
-# token="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX25hbWUiOiIyNWY1ZmRjYy1iOGZjLTQxOWYtYmY5My03ZTM4MmVjMjZmYjMiLCJ1c2VyX2lkIjoiMjVmNWZkY2MtYjhmYy00MTlmLWJmOTMtN2UzODJlYzI2ZmIzIiwidXNlcl90eXBlIjoiQkVORUZJQ0lBUlkiLCJtb2JpbGVfbnVtYmVyIjo5ODExMjA4MjYyLCJiZW5lZmljaWFyeV9yZWZlcmVuY2VfaWQiOjk2MzI1ODI4NDM1NjgsInNlY3JldF9rZXkiOiJiNWNhYjE2Ny03OTc3LTRkZjEtODAyNy1hNjNhYTE0NGYwNGUiLCJ1YSI6Ik1vemlsbGEvNS4wIChXaW5kb3dzIE5UIDEwLjA7IFdpbjY0OyB4NjQpIEFwcGxlV2ViS2l0LzUzNy4zNiAoS0hUTUwsIGxpa2UgR2Vja28pIENocm9tZS85MC4wLjQ0MzAuMjEyIFNhZmFyaS81MzcuMzYiLCJkYXRlX21vZGlmaWVkIjoiMjAyMS0wNS0xNlQxMzoyMzowMS4wNjZaIiwiaWF0IjoxNjIxMTcxMzgxLCJleHAiOjE2MjExNzIyODF9._Hh46vMnnQTl0B-u674txJydFt-OhyiGBl3yOQDGxXs"
 last_auth_time=0
 
 def print_req(req):
@@ -95,93 +94,6 @@ def getBeneficiaries():
 	if (beneficiaries_get.status_code != 200):
 		raise ValueError("Failed to get beneficiaries! code={}".format(beneficiaries_get.status_code))
 	return json.loads(beneficiaries_get.text)
-
-'''
-def getNonZeroKeys(dict):
-	nonZero = []
-	for k in dict:
-		if (dict[k] != 0):
-			nonZero.append(k)
-	return nonZero
-
-def validateBeneficiaries(chosenBeneficiaries):
-	tmp_bnf = { "Partially Vaccinated": 0, "Not Vaccinated": 0 }
-	tmp_vac = { "COVISHIELD": 0, "COVAXIN": 0 }
-	for bnf in chosenBeneficiaries:
-		tmp_bnf[chosenBeneficiaries["vaccination_status"]] += 1
-		if (chosenBeneficiaries["vaccination_status"] == "Partially Vaccinated"):
-			tmp_vac["vaccine"] += 1
-	nonZeroBnf = getNonZeroKeys(tmp_bnf)
-	if (len(nonZeroBnf) != 1):
-		raise ValueError("Incompatible beneficiary types!")
-	nonZeroVac = getNonZeroKeys(tmp_vac)
-	if (len(nonZeroVac) > 1):
-		raise ValueError("Incompatible beneficiary vaccines!")
-	return nonZeroBnf[0], 
-'''
-
-'''
-def validateBeneficiaries(chosenBeneficiaries):
-	partialV = notV = 0
-	Cshield = Cvaxin = 0
-	date = time.strftime(DATE_FORMAT, time.localtime())
-	for bnf in chosenBeneficiaries:
-		if (bnf["vaccination_status"] == "Partially Vaccinated"):
-			partialV += 1
-			if (bnf["vaccine"] == "COVISHIELD"):
-				Cshield += 1
-			elif (bnf["vaccine"] == "COVAXIN"):
-				Cvaxin += 1
-		elif (bnf["vaccination_status"] == "Not Vaccinated"):
-			notV += 1
-	if ((partialV ^ notV) == 0 or
-		(partialV != 0 and (Cvaxin ^ Cshield) == 0)):
-		raise ValueError("Incompatible beneficiaries!")
-	if (partialV):
-		if Cshield:
-			return 2, "COVISHIELD"
-		elif Cvaxin:
-			return 2, "COVAXIN"
-	else:
-		return 1, "", ""
-'''
-
-'''
-def validateBeneficiaries(chosenBeneficiaries):
-	partialV = notV = 0
-	# TODO: use set() instead of dict()
-	vaccines = dict()
-	dates = dict()
-	for bnf in chosenBeneficiaries:
-		if (bnf["vaccination_status"] == "Partially Vaccinated"):
-			partialV += 1
-		elif (bnf["vaccination_status"] == "Not Vaccinated"):
-			notV += 1
-	if ((partialV ^ notV) == 0):
-		raise ValueError("Incompatible beneficiaries!")
-	if (notV):
-		return 1, "", time.strftime(DATE_FORMAT, time.localtime())
-	for bnf in chosenBeneficiaries:
-		if (bnf["vaccine"] not in vaccines):
-			vaccines[bnf["vaccine"]] = 1
-		else:
-			vaccines[bnf["vaccine"]] += 1
-		if (bnf["dose1_date"] not in dates):
-			dates[bnf["dose1_date"]] = 1
-		else:
-			dates[bnf["dose1_date"]] += 1
-	if (len(vaccines) != 1):
-		raise ValueError("Incompatible beneficiary vaccines!")
-	if (len(dates) != 1):
-		raise ValueError("Incompatible beneficiary dates!")
-	vaccine = list(vaccines)[0]
-	date = datetime.strptime(list(dates)[0], DATE_FORMAT)
-	if (vaccine == "COVISHIELD"):
-		actualDate = date + datetime.timedelta(days=MIN_DAYS_COVISHIELD)
-	elif (vaccine == "COVAXIN"):
-		actualDate = date + datetime.timedelta(days=MIN_DAYS_COVAXIN)
-	return 2, vaccine, actualDate.strftime(DATE_FORMAT)
-'''
 
 def validateBeneficiaries(chosenBeneficiaries):
 	partialV = notV = 0
@@ -294,44 +206,6 @@ def getCentersByDistrict(date, vaccine):
 	district_params = { "district_id": districtid, "date": date, "vaccine": vaccine }
 	district_get = requests.get(COWIN_BASE_URL+FIND_BY_DISTRICT_PATH+"?"+urllib.parse.urlencode(district_params), headers=headers)
 	return json.loads(district_get.text)
-
-'''
-def getSession(dose, numReqdBeneficiaries, centers):
-	headers = { "User-Agent": str(USERAGENT), "authorization": "Bearer {}".format(token) }
-
-	available_centers = []
-	for center in centers:
-		for session in center["sessions"]:
-			if ((dose == 1 and session["available_capacity_dose1"] >= numReqdBeneficiaries) or
-				(dose == 2 and session["available_capacity_dose2"] >= numReqdBeneficiaries)):
-				available_centers.append(center)
-	if (len(available_centers) == 0):
-		raise ValueError("No available centers!")
-	print("Available centers:")
-	i = 0
-	for center in available_centers:
-		print("[{}] {}, {}, {}, {}, {} - {}".format(i + 1, center["name"], center["address"], center["block_name"], center["district_name"], center["state_name"], center["pincode"]))
-		j = 0
-		for session in center["sessions"]:
-			print("\t[{}] {}: {} {} available for {}+".format(j + 1, session["date"], session["available_capacity"], session["vaccine"], session["min_age_limit"]))
-			j += 1
-		i += 1
-	cntr_num = int(input("Choose center [1]: ") or 1)
-	cntr_chosen = available_centers[cntr_num - 1]
-	sess_num = int(input("Choose session [1]: ") or 1)
-	sess_chosen = cntr_chosen["sessions"][sess_num - 1]
-	if (len(sess_chosen["slots"]) == 0):
-		raise ValueError("No available slots!")
-	print("Available slots:")
-	i = 0
-	for slot in sess_chosen["slots"]:
-		print("[{}] {}".format(i + 1, slot))
-		i += 1
-	slot_num = int(input("Choose slot [1]: ") or 1)
-	sessid = sess_chosen["session_id"]
-	slot = sess_chosen["slots"][slot_num - 1]
-	return sessid, slot
-'''
 
 def getSession(dose, numReqdBeneficiaries, centers):
 	headers = { "User-Agent": str(USERAGENT), "authorization": "Bearer {}".format(token) }
