@@ -316,7 +316,7 @@ def getSession(dose, numReqdBeneficiaries, centers):
 
 class Captcha:
 	def __enter__(self):
-		devnull = open("/dev/null", "w")
+		devnull = open(os.devnull, "w")
 		self.oldstdout_fno = os.dup(sys.stdout.fileno())
 		self.oldstderr_fno = os.dup(sys.stderr.fileno())
 		os.dup2(devnull.fileno(), sys.stdout.fileno())
