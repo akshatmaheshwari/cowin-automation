@@ -2,7 +2,7 @@
 mobile=						# 10-digit mobile number
 all_beneficiaries=			# yes, no
 vaccine=					# Covishield, Covaxin, Sputnik V, any
-date=						# DD-MM-YYYY
+date=						# DD-MM-YYYY, today, tomorrow
 center_type=				# pincode, district
 pincode=					# 6-digit pincode
 state=						# eg: Karnataka

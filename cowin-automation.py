@@ -78,8 +78,12 @@ def readConfig(filename):
 		if ("vaccine" in default_config and default_config["vaccine"] != ""):
 			VACCINE = VACCINES.index(default_config["vaccine"].upper())
 		if ("date" in default_config and default_config["date"] != ""):
-			# TODO: today/tomorrow keywords
-			BOOKING_DATE = time.strptime(default_config["date"], DATE_FORMAT)
+			if (default_config["date"] == "today"):
+				BOOKING_DATE = datetime.date.today()
+			elif (default_config["date"] == "tomorrow"):
+				BOOKING_DATE = datetime.date.today() + datetime.timedelta(days=1)
+			else:
+				BOOKING_DATE = datetime.datetime.strptime(default_config["date"], DATE_FORMAT)
 		if ("center_type" in default_config and default_config["center_type"] != ""):
 			if (default_config["center_type"].lower() == "pincode"):
 				CENTER_BY_PIN = True
@@ -193,7 +197,7 @@ def validateBeneficiaries(chosenBeneficiaries):
 	if ((partialV ^ notV) == 0):
 		raise ValueError("Incompatible beneficiaries!")
 	if (notV):
-		return 1, -1, time.strftime(DATE_FORMAT, time.localtime())
+		return 1, -1, datetime.datetime.now().strftime(DATE_FORMAT)
 	for bnf in chosenBeneficiaries:
 		vaccines.add(bnf["vaccine"])
 		dates.add(bnf["dose1_date"])
@@ -214,14 +218,14 @@ def getVaccine():
 
 def getDate(defaultDate):
 	if (BOOKING_DATE != None):
-		return time.strftime(DATE_FORMAT, BOOKING_DATE)
+		return BOOKING_DATE.strftime(DATE_FORMAT)
 	while True:
 		try:
-			date = time.strptime(input("Enter date (DD-MM-YYYY) [{}]: ".format(defaultDate)) or defaultDate, DATE_FORMAT)
+			date = datetime.datetime.strptime(input("Enter date (DD-MM-YYYY) [{}]: ".format(defaultDate)) or defaultDate, DATE_FORMAT)
 			break
 		except ValueError:
 			continue
-	return time.strftime(DATE_FORMAT, date)
+	return date.strftime(DATE_FORMAT)
 
 def getCentersByPIN(date, vaccine):
 	pincode = PINCODE
