@@ -8,15 +8,20 @@ import urllib
 import os
 import time
 import datetime
+import sys
+import configparser
 
-DEFAULT_MOBILE=9811208262
 SECRET="U2FsdGVkX19+975ta/vFeS7IfQNhMGz11/qpFJlFcilVXYQ2ekG0rH9uMFIIUl3de81X8/6QkMcUUvqTJ7dzVg=="
 USERAGENT="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/90.0.4430.212 Safari/537.36"
+AUTH_HEADERS={ "User-Agent": str(USERAGENT) }
+HEADERS={ "User-Agent": str(USERAGENT), "Authorization": "" }
 SESSION_TIMEOUT=15*60
+MOBILE_DIGITS=10
 OTP_DIGITS=6
+PINCODE_DIGITS=6
 DATE_FORMAT="%d-%m-%Y"
-MIN_DAYS_COVISHIELD = 12*7
-MIN_DAYS_COVAXIN = 4*7
+VACCINES=[ "ANY", "COVISHIELD", "COVAXIN", "SPUTNIK V" ]
+VACCINE_MIN_GAP=[ 0, 12*7, 4*7, 3*7 ]
 
 COWIN_BASE_URL="https://cdn-api.co-vin.in/api"
 GENERATE_OTP_PATH="/v2/auth/generateMobileOTP"
@@ -32,6 +37,17 @@ SCHEDULE_PATH="/v2/appointment/schedule"
 CAPTCHA_SVG="captcha.svg"
 # CAPTCHA_PNG="captcha.png"
 
+MOBILE=0
+ALL_BENEFICIARIES=False
+VACCINE=None
+BOOKING_DATE=None
+CENTER_BY_PIN=False
+CENTER_BY_DISTRICT=False
+PINCODE=0
+STATE=None
+DISTRICT=None
+AUTO_RETRY=False
+
 token=""
 last_auth_time=0
 
@@ -43,36 +59,77 @@ def print_req(req):
 		req.body,
 	))
 
-def generateOtp(mobile):
-	headers = { "User-Agent": str(USERAGENT) }
+def readConfig(filename):
+	global MOBILE, ALL_BENEFICIARIES, VACCINE, BOOKING_DATE, CENTER_BY_PIN, CENTER_BY_DISTRICT, PINCODE, STATE, DISTRICT, AUTO_RETRY
 
+	try:
+		config = configparser.ConfigParser(inline_comment_prefixes=('#'))
+		config.read(filename)
+		if ("config" not in config.sections()):
+			raise ValueError("No [config] section")
+		default_config = config["config"]
+		if ("mobile" in default_config and default_config["mobile"] != ""):
+			MOBILE = int(default_config["mobile"])
+		if ("all_beneficiaries" in default_config):
+			if (default_config["all_beneficiaries"].lower() == "yes"):
+				ALL_BENEFICIARIES = True
+			elif (default_config["all_beneficiaries"].lower() == "no"):
+				ALL_BENEFICIARIES = False
+		if ("vaccine" in default_config and default_config["vaccine"] != ""):
+			VACCINE = VACCINES.index(default_config["vaccine"].upper())
+		if ("date" in default_config and default_config["date"] != ""):
+			# TODO: today/tomorrow keywords
+			BOOKING_DATE = time.strptime(default_config["date"], DATE_FORMAT)
+		if ("center_type" in default_config and default_config["center_type"] != ""):
+			if (default_config["center_type"].lower() == "pincode"):
+				CENTER_BY_PIN = True
+			if (default_config["center_type"].lower() == "district"):
+				CENTER_BY_DISTRICT = True
+		if CENTER_BY_PIN:
+			if ("pincode" in default_config and default_config["pincode"] != ""):
+				PINCODE = int(default_config["pincode"])
+		elif CENTER_BY_DISTRICT:
+			if ("state" in default_config and default_config["state"] != ""):
+				STATE = default_config["state"].lower()
+			if ("district" in default_config and default_config["district"] != ""):
+				DISTRICT = default_config["district"].lower()
+		if ("auto_retry" in default_config and default_config["auto_retry"].lower() == "yes"):
+			AUTO_RETRY = True
+	except Exception as error:
+		raise ValueError("Error in reading default config! - " + str(error))
+
+def loadDefaultConfig(args):
+	if (len(args) != 2):
+		return
+	readConfig(args[1])
+
+def generateOtp(mobile):
 	print("Generating OTP...")
 	otp_data = { "mobile": str(mobile), "secret": SECRET }
-	otp_post = requests.post(COWIN_BASE_URL+GENERATE_OTP_PATH, data=json.dumps(otp_data), headers=headers)
+	otp_post = requests.post(COWIN_BASE_URL+GENERATE_OTP_PATH, data=json.dumps(otp_data), headers=AUTH_HEADERS)
 	if (otp_post.status_code != 200):
 		raise ValueError("Failed to generate OTP! code={}".format(otp_post.status_code))
 	otp_resp = json.loads(otp_post.text)
 	return otp_resp
 
 def validateOtp(txnId):
-	headers = { "User-Agent": str(USERAGENT) }
-
 	otp = 0
 	while (otp == 0 or len(str(otp)) != OTP_DIGITS):
 		otp = int(input("Enter OTP: ") or 0)
 	otp_hash = hashlib.sha256(str(otp).encode()).hexdigest()
 	otp_data = { "otp": str(otp_hash), "txnId": str(txnId) }
-	otp_post = requests.post(COWIN_BASE_URL+VALIDATE_OTP_PATH, data=json.dumps(otp_data), headers=headers)
+	otp_post = requests.post(COWIN_BASE_URL+VALIDATE_OTP_PATH, data=json.dumps(otp_data), headers=AUTH_HEADERS)
 	if (otp_post.status_code != 200):
 		raise ValueError("Failed to validate OTP! code={}".format(otp_post.status_code))
 	return otp_post.status_code, json.loads(otp_post.text)
 
 def authenticate():
-	global last_auth_time
-	global token
+	global last_auth_time, token
 
 	last_auth_time = 0
-	mobile = int(input("Enter mobile number [{}]: ".format(str(DEFAULT_MOBILE))) or DEFAULT_MOBILE)
+	mobile = MOBILE
+	while (mobile == 0 or len(str(mobile)) != MOBILE_DIGITS):
+		mobile = int(input("Enter mobile number: "))
 	while True:
 		try:
 			otp_resp = generateOtp(mobile)
@@ -84,44 +141,14 @@ def authenticate():
 			print(error)
 	
 	token = otp_resp["token"]
-	print("Bearer: " + token)
+	print("Bearer: {}".format(token))
 	last_auth_time = time.time()
 
 def getBeneficiaries():
-	headers = { "User-Agent": str(USERAGENT), "authorization": "Bearer {}".format(token) }
-
-	beneficiaries_get = requests.get(COWIN_BASE_URL+BENEFICIARIES_PATH, headers=headers)
+	beneficiaries_get = requests.get(COWIN_BASE_URL+BENEFICIARIES_PATH, headers=HEADERS)
 	if (beneficiaries_get.status_code != 200):
 		raise ValueError("Failed to get beneficiaries! code={}".format(beneficiaries_get.status_code))
 	return json.loads(beneficiaries_get.text)
-
-def validateBeneficiaries(chosenBeneficiaries):
-	partialV = notV = 0
-	vaccines = set()
-	dates = set()
-	for bnf in chosenBeneficiaries:
-		if (bnf["vaccination_status"] == "Partially Vaccinated"):
-			partialV += 1
-		elif (bnf["vaccination_status"] == "Not Vaccinated"):
-			notV += 1
-	if ((partialV ^ notV) == 0):
-		raise ValueError("Incompatible beneficiaries!")
-	if (notV):
-		return 1, "", time.strftime(DATE_FORMAT, time.localtime())
-	for bnf in chosenBeneficiaries:
-		vaccines.add(bnf["vaccine"])
-		dates.add(bnf["dose1_date"])
-	if (len(vaccines) != 1):
-		raise ValueError("Incompatible beneficiary vaccines!")
-	if (len(dates) != 1):
-		raise ValueError("Incompatible beneficiary dates!")
-	vaccine = list(vaccines)[0]
-	date = datetime.datetime.strptime(list(dates)[0], DATE_FORMAT)
-	if (vaccine == "COVISHIELD"):
-		actualDate = date + datetime.timedelta(days=MIN_DAYS_COVISHIELD)
-	elif (vaccine == "COVAXIN"):
-		actualDate = date + datetime.timedelta(days=MIN_DAYS_COVAXIN)
-	return 2, vaccine, actualDate.strftime(DATE_FORMAT)
 
 def getReqdBeneficiaries(beneficiaries):
 	pend_bnfs = []
@@ -139,7 +166,10 @@ def getReqdBeneficiaries(beneficiaries):
 			i += 1
 	if (len(pend_bnfs) == 0):
 		raise ValueError("No beneficiaries pending")
-	bnf_reqd_list_inp = input("Enter beneficiary(s) (comma separated) [all]: ")
+	if (ALL_BENEFICIARIES):
+		bnf_reqd_list_inp = ""
+	else:
+		bnf_reqd_list_inp = input("Enter beneficiary(s) (comma separated) [all]: ")
 	bnf_reqd = []
 	if (bnf_reqd_list_inp == ""):
 		bnf_reqd.extend(pend_bnfs)
@@ -149,17 +179,42 @@ def getReqdBeneficiaries(beneficiaries):
 			raise ValueError("Invalid beneficiary(s)!")
 		for num in bnf_reqd_nums:
 			bnf_reqd.append(pend_bnfs[num - 1])
-	dose, vaccine, date = validateBeneficiaries(bnf_reqd)
-	return bnf_reqd, dose, vaccine, date
+	return bnf_reqd
+
+def validateBeneficiaries(chosenBeneficiaries):
+	partialV = notV = 0
+	vaccines = set()
+	dates = set()
+	for bnf in chosenBeneficiaries:
+		if (bnf["vaccination_status"] == "Partially Vaccinated"):
+			partialV += 1
+		elif (bnf["vaccination_status"] == "Not Vaccinated"):
+			notV += 1
+	if ((partialV ^ notV) == 0):
+		raise ValueError("Incompatible beneficiaries!")
+	if (notV):
+		return 1, -1, time.strftime(DATE_FORMAT, time.localtime())
+	for bnf in chosenBeneficiaries:
+		vaccines.add(bnf["vaccine"])
+		dates.add(bnf["dose1_date"])
+	if (len(vaccines) != 1):
+		raise ValueError("Incompatible beneficiary vaccines!")
+	if (len(dates) != 1):
+		raise ValueError("Incompatible beneficiary dates!")
+	vaccine = list(vaccines)[0]
+	date = datetime.datetime.strptime(list(dates)[0], DATE_FORMAT)
+	actualDate = date + datetime.timedelta(days=VACCINE_MIN_GAP[VACCINES.index(vaccine.upper())])
+	return 2, VACCINES.index(vaccine.upper()), actualDate.strftime(DATE_FORMAT)
 
 def getVaccine():
-	vaccine_mapping = { 0: "", 1: "COVISHIELD", 2: "COVAXIN" }
-	vac = -1
-	while (vac not in vaccine_mapping.keys()):
-		vac = int(input("Choose vaccine [1] Covishield [2] Covaxin [any]: ") or 0)
-	return vaccine_mapping[vac]
+	vac = VACCINE
+	while (vac not in range(len(VACCINES))):
+		vac = int(input("Choose vaccine [1] Covishield [2] Covaxin [3] Sputniv V [any]: ") or 0)
+	return vac
 
 def getDate(defaultDate):
+	if (BOOKING_DATE != None):
+		return time.strftime(DATE_FORMAT, BOOKING_DATE)
 	while True:
 		try:
 			date = time.strptime(input("Enter date (DD-MM-YYYY) [{}]: ".format(defaultDate)) or defaultDate, DATE_FORMAT)
@@ -169,53 +224,61 @@ def getDate(defaultDate):
 	return time.strftime(DATE_FORMAT, date)
 
 def getCentersByPIN(date, vaccine):
-	headers = { "User-Agent": str(USERAGENT), "authorization": "Bearer {}".format(token) }
-
-	pincode = int(input("Enter PIN: "))
-	pincode_params = { "pincode": pincode, "date": date, "vaccine": vaccine }
-	pincode_get = requests.get(COWIN_BASE_URL+FIND_BY_PIN_PATH+"?"+urllib.parse.urlencode(pincode_params), headers=headers)
+	pincode = PINCODE
+	while (pincode == 0 or len(str(pincode)) != PINCODE_DIGITS):
+		pincode = int(input("Enter PIN: ") or 0)
+	pincode_params = { "pincode": pincode, "date": date }
+	if (vaccine != 0):
+		pincode_params["vaccine"] = VACCINES[vaccine]
+	pincode_get = requests.get(COWIN_BASE_URL+FIND_BY_PIN_PATH+"?"+urllib.parse.urlencode(pincode_params), headers=HEADERS)
 	return json.loads(pincode_get.text)
 
 def getCentersByDistrict(date, vaccine):
-	headers = { "User-Agent": str(USERAGENT), "authorization": "Bearer {}".format(token) }
-
-	states_get = requests.get(COWIN_BASE_URL+STATES_PATH, headers=headers)
+	states_get = requests.get(COWIN_BASE_URL+STATES_PATH, headers=HEADERS)
 	states_resp = json.loads(states_get.text)
 	print("States:")
 	i = 0
+	state_inp = 0
 	for state in states_resp["states"]:
 		print("[{}] {}".format(i + 1, state["state_name"]))
+		if (STATE != None and STATE == state["state_name"].lower()):
+			state_inp = i + 1
 		i += 1
-	state_inp = int(input("Choose state [1]: ") or 1)
-	if (state_inp > len(states_resp["states"])):
-		raise ValueError("Invalid state")
+	if (state_inp == 0):
+		state_inp = int(input("Choose state [1]: ") or 1)
+		if (state_inp > len(states_resp["states"])):
+			raise ValueError("Invalid state")
 	stateid = states_resp["states"][state_inp - 1]["state_id"]
 
-	districts_get = requests.get(COWIN_BASE_URL+DISTRICTS_PATH.format(stateid), headers=headers)
+	districts_get = requests.get(COWIN_BASE_URL+DISTRICTS_PATH.format(stateid), headers=HEADERS)
 	districts_resp = json.loads(districts_get.text)
 	print("Districts:")
 	i = 0
+	district_inp = 0
 	for district in districts_resp["districts"]:
 		print("[{}] {}".format(i + 1, district["district_name"]))
+		if (DISTRICT != None and DISTRICT == district["district_name"].lower()):
+			district_inp = i + 1
 		i += 1
-	district_inp = int(input("Choose district [1]: ") or 1)
-	if (district_inp > len(districts_resp["districts"])):
-		raise ValueError("Invalid district")
+	if (district_inp == 0):
+		district_inp = int(input("Choose district [1]: ") or 1)
+		if (district_inp > len(districts_resp["districts"])):
+			raise ValueError("Invalid district")
 	districtid = districts_resp["districts"][district_inp - 1]["district_id"]
 
-	district_params = { "district_id": districtid, "date": date, "vaccine": vaccine }
-	district_get = requests.get(COWIN_BASE_URL+FIND_BY_DISTRICT_PATH+"?"+urllib.parse.urlencode(district_params), headers=headers)
+	district_params = { "district_id": districtid, "date": date }
+	if (vaccine != 0):
+		district_params["vaccine"] = VACCINES[vaccine]
+	district_get = requests.get(COWIN_BASE_URL+FIND_BY_DISTRICT_PATH+"?"+urllib.parse.urlencode(district_params), headers=HEADERS)
 	return json.loads(district_get.text)
 
 def getSession(dose, numReqdBeneficiaries, centers):
-	headers = { "User-Agent": str(USERAGENT), "authorization": "Bearer {}".format(token) }
-
 	available_sessions = []
 	for center in centers[:]:
 		for session in center["sessions"][:]:
 			if ((dose == 1 and session["available_capacity_dose1"] >= numReqdBeneficiaries) or
 				(dose == 2 and session["available_capacity_dose2"] >= numReqdBeneficiaries)):
-				x = 1
+				pass
 			else:
 				center["sessions"].remove(session)
 		if (len(center["sessions"]) == 0):
@@ -246,9 +309,7 @@ def getSession(dose, numReqdBeneficiaries, centers):
 	return sessid, slot
 
 def getCaptcha():
-	headers = { "User-Agent": str(USERAGENT), "authorization": "Bearer {}".format(token) }
-
-	captcha_post = requests.post(COWIN_BASE_URL+CAPTCHA_PATH, headers=headers)
+	captcha_post = requests.post(COWIN_BASE_URL+CAPTCHA_PATH, headers=HEADERS)
 	if (captcha_post.status_code != 200):
 		raise ValueError("Failed to get captcha! code={}".format(captcha_post.status_code))
 	captcha_resp = json.loads(captcha_post.text)
@@ -263,42 +324,44 @@ def getCaptcha():
 	return captcha
 
 def scheduleAppointment(schedule_data):
-	headers = { "User-Agent": str(USERAGENT), "authorization": "Bearer {}".format(token) }
-
-	schedule_post = requests.post(COWIN_BASE_URL+SCHEDULE_PATH, data=json.dumps(schedule_data), headers=headers)
+	schedule_post = requests.post(COWIN_BASE_URL+SCHEDULE_PATH, data=json.dumps(schedule_data), headers=HEADERS)
 	return schedule_post.status_code, json.loads(schedule_post.text)
 
 def main():
+	global HEADERS
+
+	loadDefaultConfig(sys.argv)
+
+	first_run = True
 	while True:
 		try:
 			if (time.time() - last_auth_time >= SESSION_TIMEOUT):
 				# TODO: alarm for expired session
 				authenticate()
+			HEADERS["Authorization"] = "Bearer {}".format(token)
 
-			headers = { "User-Agent": str(USERAGENT), "authorization": "Bearer {}".format(token) }
-
-			beneficiaries_resp = getBeneficiaries()
-
-			bnf_reqd, dose, vaccine, date = getReqdBeneficiaries(beneficiaries_resp["beneficiaries"])
-			bnfid_list = [bnf["beneficiary_reference_id"] for bnf in bnf_reqd]
-
-			if (vaccine == ""):
-				vaccine = getVaccine()
-
-			date = getDate(date)
-
-			searchType = 0
-			while (searchType not in [1, 2]):
-				searchType = int(input("Search by [1] PIN [2] District: ") or 0)
-			if (searchType == 1):
-				center_resp = getCentersByPIN(date, vaccine)
+			if (first_run or (not AUTO_RETRY)):
+				beneficiaries_resp = getBeneficiaries()
+				bnf_reqd = getReqdBeneficiaries(beneficiaries_resp["beneficiaries"])
+				dose, vaccine, date = validateBeneficiaries(bnf_reqd)
+				bnfid_list = [bnf["beneficiary_reference_id"] for bnf in bnf_reqd]
+				if (vaccine == -1):	# else decided based on first dose
+					vaccine = getVaccine()
+				date = getDate(date)
+				searchType = 1 if CENTER_BY_PIN else 2 if CENTER_BY_DISTRICT else 0
+				while (searchType not in [1, 2]):
+					searchType = int(input("Search by [1] PIN [2] District: ") or 0)
+				if (searchType == 1):
+					center_resp = getCentersByPIN(date, vaccine)
+				else:
+					center_resp = getCentersByDistrict(date, vaccine)
+				first_run = False
 			else:
-				center_resp = getCentersByDistrict(date, vaccine)
+				time.sleep(4)
 
 			sessid, slot = getSession(dose, len(bnf_reqd), center_resp["centers"])
-
+			# TODO: print pre-booking summary
 			captcha = getCaptcha()
-
 			schedule_data = { "dose": dose, "session_id": sessid, "slot": slot, "beneficiaries": [bnfid_list], "captcha": captcha }
 			schedule_respcode, schedule_resp = scheduleAppointment(schedule_data)
 			if (schedule_respcode == 200):
@@ -313,5 +376,7 @@ def main():
 if __name__ == "__main__":
 	try:
 		main()
+	except ValueError as error:
+		print(error)
 	except KeyboardInterrupt:
 		sys.exit("\nQuit!!")

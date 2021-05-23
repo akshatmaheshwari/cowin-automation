@@ -1,0 +1,10 @@
+[config]
+mobile=						# 10-digit mobile number
+all_beneficiaries=			# yes, no
+vaccine=					# Covishield, Covaxin, Sputnik V, any
+date=						# DD-MM-YYYY
+center_type=				# pincode, district
+pincode=					# 6-digit pincode
+state=						# eg: Karnataka
+district=					# eg: Bangalore Urban
+auto_retry=					# yes, no
