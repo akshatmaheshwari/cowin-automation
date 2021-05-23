@@ -3,13 +3,15 @@ import json
 import hashlib
 import sys
 import urllib
-# from svglib.svglib import svg2rlg
-# from reportlab.graphics import renderPM
 import os
 import time
 import datetime
 import sys
 import configparser
+from svglib.svglib import svg2rlg
+from reportlab.graphics import renderPM
+import tkinter
+from PIL import Image, ImageTk
 
 SECRET="U2FsdGVkX19+975ta/vFeS7IfQNhMGz11/qpFJlFcilVXYQ2ekG0rH9uMFIIUl3de81X8/6QkMcUUvqTJ7dzVg=="
 USERAGENT="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/90.0.4430.212 Safari/537.36"
@@ -35,7 +37,7 @@ CAPTCHA_PATH="/v2/auth/getRecaptcha"
 SCHEDULE_PATH="/v2/appointment/schedule"
 
 CAPTCHA_SVG="captcha.svg"
-# CAPTCHA_PNG="captcha.png"
+CAPTCHA_PNG="captcha.png"
 
 MOBILE=0
 ALL_BENEFICIARIES=False
@@ -312,6 +314,38 @@ def getSession(dose, numReqdBeneficiaries, centers):
 	slot = sess_chosen["slots"][slot_num - 1]
 	return sessid, slot
 
+class Captcha:
+	def __enter__(self):
+		devnull = open("/dev/null", "w")
+		self.oldstdout_fno = os.dup(sys.stdout.fileno())
+		self.oldstderr_fno = os.dup(sys.stderr.fileno())
+		os.dup2(devnull.fileno(), sys.stdout.fileno())
+		os.dup2(devnull.fileno(), sys.stderr.fileno())
+		return self
+
+	def __init__(self):
+		pass
+
+	def draw(self):
+		if os.environ.get('DISPLAY','') == '':
+			os.environ.__setitem__('DISPLAY', ':0.0')
+		drawing = svg2rlg(CAPTCHA_SVG)
+		renderPM.drawToFile(drawing, CAPTCHA_PNG, fmt="PNG")
+		root = tkinter.Tk()
+		root.title("Captcha")
+		img = Image.open(CAPTCHA_PNG)
+		pimg = ImageTk.PhotoImage(img)
+		size = img.size
+		frame = tkinter.Canvas(root, width=size[0], height=size[1])
+		frame.pack()
+		frame.create_image(0, 0, anchor='nw', image=pimg)
+		root.geometry("{}x{}".format(size[0] + 100, size[1]))
+		root.mainloop()
+
+	def __exit__(self, type, value, traceback):
+		os.dup2(self.oldstdout_fno, sys.stdout.fileno())
+		os.dup2(self.oldstderr_fno, sys.stderr.fileno())
+
 def getCaptcha():
 	captcha_post = requests.post(COWIN_BASE_URL+CAPTCHA_PATH, headers=HEADERS)
 	if (captcha_post.status_code != 200):
@@ -321,10 +355,12 @@ def getCaptcha():
 	f = open(CAPTCHA_SVG, "w")
 	f.write(captcha_svg)
 	f.close()
-	# drawing = svg2rlg(CAPTCHA_SVG)
-	# renderPM.drawToFile(drawing, CAPTCHA_PNG, fmt="PNG")
-	captcha = input("Enter captcha (see {}): ".format(CAPTCHA_SVG))
+	print("Generating captcha...")
+	with Captcha() as cap:
+		cap.draw()
+	captcha = input("Enter captcha (see {}): ".format(CAPTCHA_PNG))
 	os.remove(CAPTCHA_SVG)
+	os.remove(CAPTCHA_PNG)
 	return captcha
 
 def scheduleAppointment(schedule_data):
