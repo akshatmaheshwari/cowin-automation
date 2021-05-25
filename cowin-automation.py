@@ -407,6 +407,7 @@ def main():
 			schedule_respcode, schedule_resp = scheduleAppointment(schedule_data)
 			if (schedule_respcode == 200):
 				print("Success!", schedule_respcode)
+				sys.exit()
 			else:
 				print("{} Failure! {} ({})".format(schedule_respcode, schedule_resp["error"], schedule_resp["errorCode"]))
 
