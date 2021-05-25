@@ -15,7 +15,7 @@ from PIL import Image, ImageTk
 
 SECRET="U2FsdGVkX19+975ta/vFeS7IfQNhMGz11/qpFJlFcilVXYQ2ekG0rH9uMFIIUl3de81X8/6QkMcUUvqTJ7dzVg=="
 USERAGENT="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/90.0.4430.212 Safari/537.36"
-AUTH_HEADERS={ "User-Agent": str(USERAGENT) }
+AUTH_HEADERS={ "User-Agent": str(USERAGENT), "origin": "https://selfregistration.cowin.gov.in", "referer": "https://selfregistration.cowin.gov.in/" }
 HEADERS={ "User-Agent": str(USERAGENT), "Authorization": "" }
 SESSION_TIMEOUT=15*60
 MOBILE_DIGITS=10
@@ -327,6 +327,7 @@ class Captcha:
 		pass
 
 	def draw(self):
+		# TODO: add timestamp to captcha files to support parallel runs
 		if os.environ.get('DISPLAY','') == '':
 			os.environ.__setitem__('DISPLAY', ':0.0')
 		drawing = svg2rlg(CAPTCHA_SVG)
