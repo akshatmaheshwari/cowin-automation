@@ -1,16 +1,15 @@
 import requests
 import json
-import hashlib
+from hashlib import sha256
 import sys
-import urllib
+from urllib.parse import urlencode
 import os
 import time
 import datetime
-import sys
-import configparser
+from configparser import ConfigParser
 from svglib.svglib import svg2rlg
 from reportlab.graphics import renderPM
-import tkinter
+from tkinter import Tk, Canvas
 from PIL import Image, ImageTk
 
 SECRET="U2FsdGVkX19+975ta/vFeS7IfQNhMGz11/qpFJlFcilVXYQ2ekG0rH9uMFIIUl3de81X8/6QkMcUUvqTJ7dzVg=="
@@ -65,7 +64,7 @@ def readConfig(filename):
 	global MOBILE, ALL_BENEFICIARIES, VACCINE, BOOKING_DATE, CENTER_BY_PIN, CENTER_BY_DISTRICT, PINCODE, STATE, DISTRICT, AUTO_RETRY
 
 	try:
-		config = configparser.ConfigParser(inline_comment_prefixes=('#'))
+		config = ConfigParser(inline_comment_prefixes=('#'))
 		config.read(filename)
 		if ("config" not in config.sections()):
 			raise ValueError("No [config] section")
@@ -122,7 +121,7 @@ def validateOtp(txnId):
 	otp = 0
 	while (otp == 0 or len(str(otp)) != OTP_DIGITS):
 		otp = int(input("Enter OTP: ") or 0)
-	otp_hash = hashlib.sha256(str(otp).encode()).hexdigest()
+	otp_hash = sha256(str(otp).encode()).hexdigest()
 	otp_data = { "otp": str(otp_hash), "txnId": str(txnId) }
 	otp_post = requests.post(COWIN_BASE_URL+VALIDATE_OTP_PATH, data=json.dumps(otp_data), headers=AUTH_HEADERS)
 	if (otp_post.status_code != 200):
@@ -236,7 +235,7 @@ def getCentersByPIN(date, vaccine):
 	pincode_params = { "pincode": pincode, "date": date }
 	if (vaccine != 0):
 		pincode_params["vaccine"] = VACCINES[vaccine]
-	pincode_get = requests.get(COWIN_BASE_URL+FIND_BY_PIN_PATH+"?"+urllib.parse.urlencode(pincode_params), headers=HEADERS)
+	pincode_get = requests.get(COWIN_BASE_URL+FIND_BY_PIN_PATH+"?"+urlencode(pincode_params), headers=HEADERS)
 	return json.loads(pincode_get.text)
 
 def getCentersByDistrict(date, vaccine):
@@ -275,7 +274,7 @@ def getCentersByDistrict(date, vaccine):
 	district_params = { "district_id": districtid, "date": date }
 	if (vaccine != 0):
 		district_params["vaccine"] = VACCINES[vaccine]
-	district_get = requests.get(COWIN_BASE_URL+FIND_BY_DISTRICT_PATH+"?"+urllib.parse.urlencode(district_params), headers=HEADERS)
+	district_get = requests.get(COWIN_BASE_URL+FIND_BY_DISTRICT_PATH+"?"+urlencode(district_params), headers=HEADERS)
 	return json.loads(district_get.text)
 
 def getSession(dose, numReqdBeneficiaries, centers):
@@ -332,12 +331,12 @@ class Captcha:
 			os.environ.__setitem__('DISPLAY', ':0.0')
 		drawing = svg2rlg(CAPTCHA_SVG)
 		renderPM.drawToFile(drawing, CAPTCHA_PNG, fmt="PNG")
-		root = tkinter.Tk()
+		root = Tk()
 		root.title("Captcha")
 		img = Image.open(CAPTCHA_PNG)
 		pimg = ImageTk.PhotoImage(img)
 		size = img.size
-		frame = tkinter.Canvas(root, width=size[0], height=size[1])
+		frame = Canvas(root, width=size[0], height=size[1])
 		frame.pack()
 		frame.create_image(0, 0, anchor='nw', image=pimg)
 		root.geometry("{}x{}".format(size[0] + 100, size[1]))
@@ -418,7 +417,8 @@ def main():
 if __name__ == "__main__":
 	try:
 		main()
-	except ValueError as error:
+	except Exception as error:
 		print(error)
+		input("Press enter to exit")
 	except KeyboardInterrupt:
 		sys.exit("\nQuit!!")
