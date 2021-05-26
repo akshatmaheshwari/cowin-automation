@@ -410,8 +410,7 @@ def main():
 			schedule_data = { "dose": dose, "session_id": sessid, "slot": slot, "beneficiaries": [bnfid_list], "captcha": captcha }
 			schedule_respcode, schedule_resp = scheduleAppointment(schedule_data)
 			if (schedule_respcode == 200):
-				print("Success!", schedule_respcode)
-				sys.exit()
+				sys.exit("Success! {}".format(schedule_respcode))
 			else:
 				print("{} Failure! {} ({})".format(schedule_respcode, schedule_resp["error"], schedule_resp["errorCode"]))
 
