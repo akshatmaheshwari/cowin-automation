@@ -330,7 +330,10 @@ class Captcha:
 		if os.environ.get('DISPLAY','') == '':
 			os.environ.__setitem__('DISPLAY', ':0.0')
 		drawing = svg2rlg(CAPTCHA_SVG)
-		renderPM.drawToFile(drawing, CAPTCHA_PNG, fmt="PNG")
+		try:
+			renderPM.drawToFile(drawing, CAPTCHA_PNG, fmt="PNG")
+		except (renderPM.RenderPMError, OSError) as error:
+			return
 		root = Tk()
 		root.title("Captcha")
 		img = Image.open(CAPTCHA_PNG)
@@ -358,9 +361,11 @@ def getCaptcha():
 	print("Generating captcha...")
 	with Captcha() as cap:
 		cap.draw()
-	captcha = input("Enter captcha (see {}): ".format(CAPTCHA_PNG))
-	os.remove(CAPTCHA_SVG)
-	os.remove(CAPTCHA_PNG)
+	captcha = input("Enter captcha (see {} or {}): ".format(CAPTCHA_SVG, CAPTCHA_PNG))
+	if (os.path.exists(CAPTCHA_SVG)):
+		os.remove(CAPTCHA_SVG)
+	if (os.path.exists(CAPTCHA_PNG)):
+		os.remove(CAPTCHA_PNG)
 	return captcha
 
 def scheduleAppointment(schedule_data):
