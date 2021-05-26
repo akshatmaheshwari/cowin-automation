@@ -37,6 +37,7 @@ SCHEDULE_PATH="/v2/appointment/schedule"
 
 CAPTCHA_SVG="captcha.svg"
 CAPTCHA_PNG="captcha.png"
+DEFAULT_CONFIG_TXT="default-config.txt"
 
 MOBILE=0
 ALL_BENEFICIARIES=False
@@ -64,6 +65,8 @@ def readConfig(filename):
 	global MOBILE, ALL_BENEFICIARIES, VACCINE, BOOKING_DATE, CENTER_BY_PIN, CENTER_BY_DISTRICT, PINCODE, STATE, DISTRICT, AUTO_RETRY
 
 	try:
+		if (not os.path.exists(filename)):
+			return
 		config = ConfigParser(inline_comment_prefixes=('#'))
 		config.read(filename)
 		if ("config" not in config.sections()):
@@ -105,8 +108,9 @@ def readConfig(filename):
 
 def loadDefaultConfig(args):
 	if (len(args) != 2):
-		return
-	readConfig(args[1])
+		readConfig(DEFAULT_CONFIG_TXT)
+	else:
+		readConfig(args[1])
 
 def generateOtp(mobile):
 	print("Generating OTP...")
